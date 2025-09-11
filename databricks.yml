@@ -1,0 +1,141 @@
+bundle:
+  name: nyc311-pipeline
+
+# Variables with SQL warehouse lookup
+variables:
+  bronze_catalog:
+    description: "Bronze catalog name for raw data"
+    default: "bronze"
+  
+  silver_catalog:
+    description: "Silver catalog name for cleaned data"
+    default: "silver"
+  
+  gold_catalog:
+    description: "Gold catalog name for analytics data"
+    default: "gold"
+  
+  schema_name:
+    description: "Schema name for the NYC 311 data"
+    default: "nyc311"
+  
+  warehouse_id:
+    description: "SQL warehouse used for the SQL file tasks"
+    lookup:
+      warehouse: "Serverless Starter Warehouse"
+
+# Where the bundle syncs in the workspace
+workspace:
+  root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+targets:
+  dev:
+    mode: development
+    default: true
+    resources:
+      jobs:
+        nyc311_pipeline:
+          name: "NYC 311 Data Pipeline"
+          # Job-level parameters get pushed down to SQL file tasks automatically
+          parameters:
+            - name: bronze_catalog
+              default: ${var.bronze_catalog}
+            - name: silver_catalog
+              default: ${var.silver_catalog}
+            - name: gold_catalog
+              default: ${var.gold_catalog}
+            - name: schema_name
+              default: ${var.schema_name}
+            - name: environment
+              default: "dev"
+          
+          tasks:
+            - task_key: "bronze_ingest"
+              notebook_task:
+                notebook_path: "./src/pipelines/nyc311/nyc311_bronze_ingest.py"
+                base_parameters:
+                  bronze_catalog: ${var.bronze_catalog}
+                  schema_name: ${var.schema_name}
+                  environment: "dev"
+                  batch_size: "50000"
+            
+            - task_key: "silver_transform"
+              depends_on:
+                - task_key: bronze_ingest
+              notebook_task:
+                notebook_path: "./src/pipelines/nyc311/nyc311_silver_transform.py"
+                base_parameters:
+                  bronze_catalog: ${var.bronze_catalog}
+                  silver_catalog: ${var.silver_catalog}
+                  schema_name: ${var.schema_name}
+                  environment: "dev"
+            
+            - task_key: "gold_layer"
+              depends_on:
+                - task_key: silver_transform
+              sql_task:
+                file:
+                  # Point to the deployed workspace path of your SQL file
+                  path: ${workspace.file_path}/src/sql/create_gold_layer_complete.sql
+                  source: WORKSPACE
+                warehouse_id: ${var.warehouse_id}
+          
+          timeout_seconds: 3600  # 1 hour timeout
+          max_concurrent_runs: 1
+
+  prod:
+    mode: production
+    resources:
+      jobs:
+        nyc311_pipeline:
+          name: "[PROD] NYC 311 Data Pipeline"
+          # Job-level parameters get pushed down to SQL file tasks automatically
+          parameters:
+            - name: bronze_catalog
+              default: ${var.bronze_catalog}
+            - name: silver_catalog
+              default: ${var.silver_catalog}
+            - name: gold_catalog
+              default: ${var.gold_catalog}
+            - name: schema_name
+              default: ${var.schema_name}
+            - name: environment
+              default: "prod"
+          
+          tasks:
+            - task_key: "bronze_ingest"
+              notebook_task:
+                notebook_path: "./src/pipelines/nyc311/nyc311_bronze_ingest.py"
+                base_parameters:
+                  bronze_catalog: ${var.bronze_catalog}
+                  schema_name: ${var.schema_name}
+                  environment: "prod"
+                  batch_size: "100000"
+            
+            - task_key: "silver_transform"
+              depends_on:
+                - task_key: bronze_ingest
+              notebook_task:
+                notebook_path: "./src/pipelines/nyc311/nyc311_silver_transform.py"
+                base_parameters:
+                  bronze_catalog: ${var.bronze_catalog}
+                  silver_catalog: ${var.silver_catalog}
+                  schema_name: ${var.schema_name}
+                  environment: "prod"
+            
+            - task_key: "gold_layer"
+              depends_on:
+                - task_key: silver_transform
+              sql_task:
+                file:
+                  # Point to the deployed workspace path of your SQL file
+                  path: ${workspace.file_path}/src/sql/create_gold_layer_complete.sql
+                  source: WORKSPACE
+                warehouse_id: ${var.warehouse_id}
+          
+          schedule:
+            quartz_cron_expression: "0 0 2 * * ?"
+            timezone_id: "America/New_York"
+            pause_status: "PAUSED"  # Start paused for free account
+          timeout_seconds: 7200  # 2 hours for larger production loads
+          max_concurrent_runs: 1
