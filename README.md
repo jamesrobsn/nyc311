@@ -240,6 +240,15 @@ The gold layer uses SQL file execution on SQL Warehouse instead of notebooks for
 - **Simpler Maintenance**: Pure SQL scripts are easier to debug and modify
 - **Parameter Support**: Job parameters automatically passed to SQL scripts
 
+### Free Edition Compatibility
+
+The pipeline includes special optimizations for Databricks Free Edition serverless compute:
+- **Month-by-Month Processing**: Processes data in monthly batches to avoid 5 concurrent task limit
+- **Single Writer Strategy**: Uses `REPARTITION(1)` and `coalesce(1)` to force single writer per batch
+- **Broadcast Joins**: Small dimension tables are broadcast to avoid shuffle operations
+- **No Spark Configs**: Avoids cluster configuration changes not allowed on Free Edition
+- **Optimized Hints**: SQL hints like `/*+ BROADCAST(table) */` reduce task counts
+
 ### Optimization
 
 Tables are automatically optimized with:

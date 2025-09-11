@@ -5,22 +5,32 @@ This directory contains SQL scripts for creating the gold layer star schema dire
 ## Files
 
 ### Pipeline-Integrated Scripts
-- **`create_gold_layer_complete.sql`** - Master script executed by Databricks bundle SQL task
+- **`create_gold_layer_free_edition.sql`** - Free Edition compatible master script with monthly processing
+- **`create_fact_table_monthly.sql`** - Standalone monthly fact table loading script
 
-### Standalone SQL Scripts (For Manual Execution)  
+### Alternative/Optional Scripts  
+- **`create_gold_layer_complete.sql`** - Original single-batch approach (may hit task limits)
+- **`compact_silver_optional.sql`** - Optional silver table compaction for better performance
 - **`create_dimension_tables.sql`** - Creates dimension tables only
 - **`create_fact_table.sql`** - Creates fact table only  
 - **`create_aggregate_tables.sql`** - Creates aggregate tables and Power BI view
 
-## Pipeline Integration
+## Free Edition Approach
 
-The gold layer is automatically created as part of the Databricks pipeline using SQL file tasks:
+The main approach uses monthly processing to work around Free Edition serverless task limits:
 
 ### How It Works
-1. **Databricks Bundle** deploys the SQL file to workspace  
-2. **SQL Task** executes the script on SQL Warehouse with job parameters
-3. **Named Parameters** (`:gold_catalog`, `:schema_name`, etc.) are automatically provided
-4. **Direct Execution** bypasses Spark task limits on Free Edition accounts
+1. **Creates Dimensions First** - Small tables that don't trigger task limits
+2. **Creates Empty Fact Table** - Proper schema with optimizations disabled  
+3. **Processes Monthly Batches** - Loops through months using automated scripting
+4. **Single Writer Per Month** - `REPARTITION(1)` hint forces one writer task
+5. **Broadcast Joins** - Small dimensions are broadcast to avoid shuffles
+
+### Key Benefits
+- **No Configuration Changes** - Works without modifying Spark/cluster settings
+- **Stays Under Task Limits** - Each monthly batch uses only 1-2 tasks
+- **Preserves Data Quality** - Same star schema and business logic
+- **Better File Organization** - One file per month for optimal scanning
 
 ### Parameters Used
 - `:bronze_catalog` - Source bronze catalog name
