@@ -86,7 +86,7 @@ targets:
               depends_on:
                 - task_key: silver_transform
               notebook_task:
-                notebook_path: "./src/pipelines/nyc311/nyc311_gold_free_edition.py"
+                notebook_path: "./src/pipelines/nyc311/nyc311_gold_star_schema.py"
                 base_parameters:
                   silver_catalog: ${var.silver_catalog}
                   gold_catalog: ${var.gold_catalog}
@@ -139,12 +139,13 @@ targets:
             - task_key: "gold_layer"
               depends_on:
                 - task_key: silver_transform
-              sql_task:
-                file:
-                  # Point to the deployed workspace path of your SQL file
-                  path: ${workspace.file_path}/src/sql/create_gold_layer_free_edition.sql
-                  source: WORKSPACE
-                warehouse_id: ${var.warehouse_id}
+              notebook_task:
+                notebook_path: "./src/pipelines/nyc311/nyc311_gold_star_schema.py"
+                base_parameters:
+                  silver_catalog: ${var.silver_catalog}
+                  gold_catalog: ${var.gold_catalog}
+                  schema_name: ${var.schema_name}
+                  environment: "prod"
           
           schedule:
             quartz_cron_expression: "0 0 2 * * ?"
