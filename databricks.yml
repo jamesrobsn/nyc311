@@ -36,6 +36,13 @@ targets:
       jobs:
         nyc311_pipeline:
           name: "NYC 311 Data Pipeline"
+          email_notifications:
+            on_failure:
+              - jamesrobsn@hotmail.com
+          # optional global notification behavior
+          notification_settings:
+            no_alert_for_skipped_runs: true
+            no_alert_for_canceled_runs: true
           # Job-level parameters get pushed down to SQL file tasks automatically
           parameters:
             - name: bronze_catalog
@@ -93,6 +100,11 @@ targets:
                   schema_name: ${var.schema_name}
                   environment: "dev"
           
+          
+          schedule:
+            quartz_cron_expression: "0 0 23 * * ?"
+            timezone_id: "UTC"
+            pause_status: "UNPAUSED"
           timeout_seconds: 3600  # 1 hour timeout
           max_concurrent_runs: 1
 
@@ -102,6 +114,13 @@ targets:
       jobs:
         nyc311_pipeline:
           name: "[PROD] NYC 311 Data Pipeline"
+          email_notifications:
+            on_failure:
+              - jamesrobsn@gmail.com
+          # optional global notification behavior
+          notification_settings:
+            no_alert_for_skipped_runs: true
+            no_alert_for_canceled_runs: true
           # Job-level parameters get pushed down to SQL file tasks automatically
           parameters:
             - name: bronze_catalog
@@ -148,8 +167,8 @@ targets:
                   environment: "prod"
           
           schedule:
-            quartz_cron_expression: "0 0 2 * * ?"
-            timezone_id: "America/New_York"
+            quartz_cron_expression: "0 0 23 * * ?"
+            timezone_id: "UTC"
             pause_status: "PAUSED"  # Start paused for free account
           timeout_seconds: 7200  # 2 hours for larger production loads
           max_concurrent_runs: 1

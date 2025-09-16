@@ -54,7 +54,7 @@ except:
 
 # Incremental processing configuration
 OVERLAP_HOURS = 6  # overlap window to avoid missing records
-MAX_ROWS_PER_RUN = 500000 if environment == "prod" else 50000  # safety limit
+MAX_ROWS_PER_RUN = 5000000 if environment == "prod" else 500000  # safety limit
 HISTORY_FLOOR_DAYS = 30  # only process records from last N days
 
 # COMMAND ----------
