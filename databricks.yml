@@ -70,18 +70,18 @@ targets:
                   schema_name: ${var.schema_name}
                   environment: "dev"
             
-            # - task_key: "gold_layer"
+            # SQL Task Example (commented out - using Python notebook instead)
+            # - task_key: "gold_layer_sql"
             #   depends_on:
             #     - task_key: silver_transform
             #   sql_task:
             #     file:
             #       # Point to the deployed workspace path of your SQL file
-            #       path: ${workspace.file_path}/src/sql/create_gold_layer_free_edition.sql
+            #       path: ${workspace.file_path}/src/sql/create_gold_layer_complete.sql
             #       source: WORKSPACE
             #     warehouse_id: ${var.warehouse_id}
             
-            # Alternative: Use Python notebook approach for gold layer
-            # Uncomment this task and comment out the sql_task above to use Python
+            # Python notebook approach for gold layer (currently active)
             - task_key: "gold_layer_python"
               depends_on:
                 - task_key: silver_transform

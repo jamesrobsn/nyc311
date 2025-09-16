@@ -6,28 +6,57 @@ This guide provides detailed instructions for deploying the NYC 311 Data Pipelin
 
 ### 1. Databricks Workspace Setup
 
-- Access to a Databricks workspace (Azure, AWS, or GCP)
-- Appropriate permissions to create jobs, clusters, and tables
-- Access to Unity Catalog (recommended for production)
+- Access to a Databricks workspace (Azure, AWS, GCP, or Free Edition)
+- Appropriate permissions to create jobs and tables
+- Access to Unity Catalog
 
 ### 2. Local Environment Setup
 
 **Install Databricks CLI:**
+
+The new Databricks CLI (v0.205.0+) is required for Asset Bundle support. Do NOT use the old `databricks-cli` package.
+
 ```bash
-pip install databricks-cli
+# Download and install the new Databricks CLI
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+# Verify installation (should show v0.205.0 or higher)
+databricks -v
 ```
+
+**Notes:**
+- For Windows, use Windows Subsystem for Linux (WSL) or run as administrator
+- For Linux/macOS, if you get permission errors, run with `sudo`
+- If you see "Target path already exists", manually delete the old CLI first
 
 **Configure Authentication:**
 
-Option A - Using environment variables:
+The new Databricks CLI uses profile-based authentication. Environment variables often don't work reliably.
+
 ```bash
-export DATABRICKS_HOST="https://your-workspace.databricks.com"
-export DATABRICKS_TOKEN="your-personal-access-token"
+# Authenticate and create a profile
+databricks auth login
+
+# Follow the browser flow and save with a profile name (e.g., DEFAULT, DEV, PROD)
+# You can create multiple profiles for different environments
+
+# List your configured profiles
+databricks auth profiles
+
+# Test your authentication
+databricks workspace list --profile <your-profile-name>
 ```
 
-Option B - Using Databricks CLI configuration:
+**Profile Usage:**
+- Use `--profile <name>` with bundle commands
+- Set a default profile or let VS Code's Databricks extension auto-detect
+- Create separate profiles for dev/prod environments
+
+**Alternative - Manual Token Configuration:**
+If browser authentication doesn't work, you can configure manually:
 ```bash
-databricks configure --token
+databricks configure --host https://your-workspace.databricks.com --token
+# Enter your personal access token when prompted
 ```
 
 ### 3. NYC 311 API Setup (Optional)
@@ -112,7 +141,7 @@ After successful dev testing:
 ## Environment Differences
 
 ### Development Environment
-- **Cluster Size**: Smaller (2 workers)
+- **Cluster Size**: Serverless
 - **Data Volume**: Limited batches for faster testing
 - **Schedule**: Disabled by default
 - **Optimization**: Basic optimization only
@@ -165,14 +194,7 @@ SELECT
   COUNT(*) as record_count
 FROM gold.nyc311.fact_service_requests;
 ```
-
-### 3. Test Power BI View
-
-```sql
-SELECT * FROM gold.nyc311.vw_service_requests_powerbi LIMIT 10;
-```
-
-### 4. Schedule Jobs
+### 3. Schedule Jobs
 
 Enable job schedules for production:
 

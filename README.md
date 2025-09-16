@@ -6,9 +6,9 @@ A comprehensive Databricks Asset Bundle for processing NYC 311 service request d
 
 This project implements a modern data lakehouse architecture using Databricks with three layers:
 
-- **Bronze Layer**: Raw data ingestion from NYC 311 API (Notebook-based)
-- **Silver Layer**: Cleaned and standardized data with data quality improvements (Notebook-based)
-- **Gold Layer**: Star schema with dimensions and fact tables (SQL file-based via SQL Warehouse)
+- **Bronze Layer**: Raw data ingestion from NYC 311 API (Python notebook)
+- **Silver Layer**: Cleaned and standardized data with data quality improvements (Python notebook)
+- **Gold Layer**: Star schema with dimensions and fact tables (Python notebook)
 
 ### Data Flow
 
@@ -21,32 +21,26 @@ NYC 311 API → Bronze Tables → Silver Tables → Gold Star Schema → Power B
 
 ```
 nyc311/
-├── 📋 databricks.yml                    # Main DAB configuration with SQL tasks
+├── 📋 databricks.yml                    # Main DAB configuration
 ├── 🚀 deploy.sh                         # Automated deployment script  
 ├── 📖 README.md                         # This comprehensive guide
 ├── 📊 src/
-│   ├── 🔧 config/config.py              # Centralized configuration
-│   ├── 🛠️ utils/utils.py                # Utility functions
-│   ├── 📁 pipelines/                    # Pipeline notebook code
+│   ├──  pipelines/                    # Pipeline notebook code
 │   │   ├── 📄 README.md                 # Pipeline organization guide
-│   │   └── nyc311/                      # NYC 311 specific notebooks
-│   │       ├── nyc311_bronze_ingest.py  # Bronze layer notebook
-│   │       └── nyc311_silver_transform.py # Silver layer notebook
-│   └── 📁 sql/                          # Gold layer SQL scripts
+│   │   ├── 🏢 nyc311/                   # NYC 311 pipeline
+│   │   │   ├── nyc311_bronze_ingest.py    # Raw data ingestion
+│   │   │   ├── nyc311_silver_transform.py # Data cleaning & transformation  
+│   │   │   └── nyc311_gold_star_schema.py # Star schema creation
+│   │   └── 📂 future_examples/          # Examples for additional pipelines
+│   │       └── nyc_taxi_bronze_ingest.py # Future taxi pipeline example
+│   └── 📁 sql/                          # Gold layer SQL scripts (examples)
 │       ├── 📄 README.md                 # SQL scripts documentation
 │       ├── create_gold_layer_complete.sql # Master gold layer script
 │       ├── create_dimension_tables.sql  # Individual dimension tables
 │       ├── create_fact_table.sql        # Fact table creation
 │       └── create_aggregate_tables.sql  # Additional aggregation tables
-│       ├── 🏢 nyc311/                   # NYC 311 pipeline
-│       │   ├── nyc311_bronze_ingest.py    # Raw data ingestion
-│       │   ├── nyc311_silver_transform.py # Data cleaning & transformation  
-│       │   └── nyc311_gold_star_schema.py # Star schema creation
-│       └── 📂 future_examples/          # Examples for additional pipelines
-│           └── nyc_taxi_bronze_ingest.py # Future taxi pipeline example
-├── 📚 docs/
+├──  docs/
 │   ├── deployment.md                    # Detailed deployment guide
-│   ├── architecture.md                  # Technical architecture docs
 │   └── powerbi_guide.md                 # Power BI integration guide
 ├── 📦 requirements.txt                  # Python dependencies
 ├── 🔧 .env.template                     # Environment variables template
@@ -98,27 +92,42 @@ nyc311/
 ### Prerequisites
 
 1. **Databricks Workspace**: Access to a Databricks workspace
-2. **Databricks CLI**: Install using `pip install databricks-cli`
-3. **Environment Variables**:
-   ```bash
-   export DATABRICKS_HOST="https://your-workspace.databricks.com"
-   export DATABRICKS_TOKEN="your-access-token"
-   ```
+2. **Databricks CLI**: Install the new Databricks CLI (v0.205.0+)
+3. **Authentication**: Configure CLI authentication with profiles
 
 ### Deployment
 
-1. **Clone and Navigate**:
+1. **Install Databricks CLI**:
+   ```bash
+   # Download and install the new Databricks CLI
+   curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+   
+   # Verify installation (should show v0.205.0+)
+   databricks -v
+   ```
+
+2. **Clone and Navigate**:
    ```bash
    git clone <repository-url>
    cd nyc311
    ```
 
-2. **Deploy to Development**:
+3. **Configure Authentication**:
+   ```bash
+   # Authenticate and create a profile
+   databricks auth login
+   # Follow browser flow and save as profile (e.g., DEFAULT)
+   
+   # Verify authentication
+   databricks auth profiles
+   ```
+
+4. **Deploy to Development**:
    ```bash
    ./deploy.sh dev
    ```
 
-3. **Deploy to Production**:
+5. **Deploy to Production**:
    ```bash
    ./deploy.sh prod
    ```
@@ -166,11 +175,11 @@ The pipeline is organized as a single job with three sequential tasks:
 
 ### Customization
 
-Edit `src/config/config.py` to customize:
-- API endpoints and batch sizes
-- Data quality thresholds
-- Borough mappings
-- Complaint priority rules
+Customization options are available in the individual notebook files:
+- API endpoints and batch sizes (bronze notebook)
+- Data quality thresholds (silver notebook)
+- Borough mappings (silver notebook)
+- Star schema structure (gold notebook)
 
 ## Data Quality
 
@@ -275,6 +284,59 @@ Monitor the pipeline through:
 ### Debug Mode
 
 For development, limit data volume by setting environment to "dev" which processes fewer batches.
+
+## Databricks Free Edition Optimizations
+
+This pipeline includes several specific optimizations to work within Databricks Free Edition serverless compute constraints:
+
+### Task Limit Workarounds
+
+**Sequential Fact Table Creation:**
+- Gold layer fact table creation is broken into multiple sequential steps to avoid exceeding the 5 concurrent task limit
+- Uses intermediate temporary tables: `temp_silver_base` → `temp_silver_with_agency` → `temp_silver_with_location` → final fact table
+- Each step uses `coalesce(1)` to force single partition writes, minimizing task count
+- Temporary tables are cleaned up after fact table creation to free resources
+
+**Broadcast Join Strategy:**
+- Small dimension tables (< 1000 records) use broadcast joins with `F.broadcast()` hints
+- Prevents shuffle operations that would create additional tasks
+- Location dimension uses conditional broadcast based on record count
+
+### Resource Optimization
+
+**Hash-based Surrogate Keys:**
+- Uses `F.hash()` function for dimension keys instead of monotonically increasing IDs
+- Avoids expensive `monotonically_increasing_id()` operations that can exceed task limits
+- Hash keys are deterministic and consistent across runs
+
+**Shuffle Partition Reduction:**
+- Sets `spark.sql.shuffle.partitions` to 4 (down from default 200)
+- Minimizes task count for small datasets in Free Edition environment
+- Balances performance with task limit constraints
+
+**Aggregation Simplification:**
+- Skips complex monthly agency summary aggregation (too resource intensive)
+- Geographic summary uses fact table directly without additional joins
+- Pre-calculated aggregates designed for single-pass processing
+
+**Delta Optimization Disabled:**
+- Disables `delta.autoOptimize.optimizeWrite` and `delta.autoOptimize.autoCompact` in dev
+- Prevents automatic background tasks that could exceed limits
+- Table optimization only runs in production environment
+
+### Performance vs. Limits Trade-offs
+
+**Single Writer Strategy:**
+- All writes use `coalesce(1)` to ensure single task execution
+- Trades parallel write performance for task limit compliance
+- Acceptable for moderate data volumes in Free Edition
+
+**Simplified Star Schema:**
+- Location dimension simplified to borough-level only (vs. full geographic hierarchy)
+- Reduces join complexity and task count in fact table creation
+- Geographic details preserved in fact table for Power BI mapping
+
+These optimizations demonstrate how to adapt enterprise data patterns for Databricks Free Edition constraints while maintaining data quality and analytical capabilities.
 
 ## Best Practices Demonstrated
 

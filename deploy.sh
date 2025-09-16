@@ -34,61 +34,30 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if required environment variables are set
+# Check if required environment variables are set (optional - profiles preferred)
 check_env_vars() {
-    print_status "Checking environment variables..."
+    print_status "Checking for optional environment variables..."
     
-    required_vars=(
-        "DATABRICKS_HOST"
-        "DATABRICKS_TOKEN"
-    )
-    
-    missing_vars=()
-    for var in "${required_vars[@]}"; do
-        if [[ -z "${!var}" ]]; then
-            missing_vars+=("$var")
-        fi
-    done
-    
-    if [[ ${#missing_vars[@]} -gt 0 ]]; then
-        print_error "Missing required environment variables:"
-        for var in "${missing_vars[@]}"; do
-            echo "  - $var"
-        done
-        echo ""
-        echo "Please set these variables either:"
-        echo "1. In a .env file (recommended):"
-        echo "   DATABRICKS_HOST=https://your-workspace.databricks.com"
-        echo "   DATABRICKS_TOKEN=your-access-token"
-        echo ""
-        echo "2. Or as environment variables:"
-        echo "   export DATABRICKS_HOST='https://your-workspace.databricks.com'"
-        echo "   export DATABRICKS_TOKEN='your-access-token'"
-        exit 1
+    # Environment variables are now optional since we use profiles
+    if [[ -n "${DATABRICKS_HOST:-}" && -n "${DATABRICKS_TOKEN:-}" ]]; then
+        print_status "Environment variables are set (will be used alongside profiles)"
+    else
+        print_status "No environment variables set - using profile-based authentication"
     fi
-    
-    print_status "Environment variables are set correctly"
 }
 
-# Check if Databricks CLI is installed and is the new version
+# Check if Databricks CLI is installed and authentication is configured
 check_databricks_cli() {
-    print_status "Checking Databricks CLI installation..."
+    print_status "Checking Databricks CLI installation and authentication..."
     
     if ! command -v databricks &> /dev/null; then
         print_error "Databricks CLI is not installed"
         echo ""
-        echo "Install the new Databricks CLI from:"
-        echo "https://docs.databricks.com/en/dev-tools/cli/install.html"
+        echo "Install the new Databricks CLI:"
+        echo "curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh"
         echo ""
-        echo "Quick install options:"
-        echo "1. Using curl (Linux/macOS):"
-        echo "   curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh"
-        echo ""
-        echo "2. Using Homebrew (macOS):"
-        echo "   brew tap databricks/tap && brew install databricks"
-        echo ""
-        echo "3. Download from GitHub releases:"
-        echo "   https://github.com/databricks/cli/releases"
+        echo "Then authenticate:"
+        echo "databricks auth login"
         exit 1
     fi
     
@@ -96,15 +65,24 @@ check_databricks_cli() {
     if ! databricks bundle --help &> /dev/null; then
         print_error "You are using the legacy Databricks CLI which doesn't support bundles"
         echo ""
-        echo "Please install the new Databricks CLI from:"
-        echo "https://docs.databricks.com/en/dev-tools/cli/install.html"
-        echo ""
-        echo "Quick install (will replace current installation):"
+        echo "Please install the new Databricks CLI:"
         echo "curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh"
         exit 1
     fi
     
-    print_status "Databricks CLI (new version) is installed"
+    # Check if user is authenticated
+    if ! databricks auth profiles &> /dev/null; then
+        print_error "No authentication profiles found"
+        echo ""
+        echo "Please authenticate first:"
+        echo "databricks auth login"
+        echo ""
+        echo "Then verify with:"
+        echo "databricks auth profiles"
+        exit 1
+    fi
+    
+    print_status "Databricks CLI (new version) is installed and authenticated"
 }
 
 # Validate bundle configuration
@@ -132,32 +110,26 @@ deploy_bundle() {
     print_status "Bundle deployed successfully to $environment"
 }
 
-# Run the jobs (optional)
-run_jobs() {
+# Run the pipeline (optional)
+run_pipeline() {
     local environment=${1:-dev}
     
-    print_warning "Do you want to run the NYC 311 jobs now? (y/n)"
+    print_warning "Do you want to run the NYC 311 pipeline now? (y/n)"
     read -r response
     
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        print_status "Running NYC 311 Bronze Ingest job..."
-        databricks bundle run nyc311_bronze_ingest_job --target "$environment"
+        print_status "Running NYC 311 Data Pipeline (all three tasks will execute sequentially)..."
+        databricks bundle run nyc311_pipeline --target "$environment"
         
-        print_status "Waiting 5 minutes before running Silver Transform job..."
-        sleep 300
-        
-        print_status "Running NYC 311 Silver Transform job..."
-        databricks bundle run nyc311_silver_transform_job --target "$environment"
-        
-        print_status "Waiting 5 minutes before running Gold Star Schema job..."
-        sleep 300
-        
-        print_status "Running NYC 311 Gold Star Schema job..."
-        databricks bundle run nyc311_gold_star_schema_job --target "$environment"
-        
-        print_status "All jobs completed successfully"
+        print_status "Pipeline completed successfully!"
+        echo ""
+        echo "The pipeline executed these tasks in sequence:"
+        echo "1. Bronze Ingest - Raw data from NYC 311 API"
+        echo "2. Silver Transform - Data cleaning and standardization"
+        echo "3. Gold Star Schema - Analytics-ready tables"
     else
-        print_status "Skipping job execution. You can run them manually later."
+        print_status "Skipping pipeline execution. You can run it manually later with:"
+        echo "databricks bundle run nyc311_pipeline --target $environment"
     fi
 }
 
@@ -180,17 +152,17 @@ main() {
     # Deploy the bundle
     deploy_bundle "$environment"
     
-    # Optionally run jobs
-    run_jobs "$environment"
+    # Optionally run pipeline
+    run_pipeline "$environment"
     
     echo ""
     print_status "Deployment completed successfully!"
     echo ""
     echo "Next steps:"
-    echo "1. Check the Databricks workspace for deployed jobs"
-    echo "2. Configure any required secrets in Databricks Secret Scopes"
-    echo "3. Monitor job execution in the Databricks UI"
-    echo "4. Access the gold layer tables for analytics and Power BI"
+    echo "1. Check the Databricks workspace for deployed pipeline job"
+    echo "2. Monitor pipeline execution in the Databricks UI"
+    echo "3. Access the gold layer tables for analytics and Power BI"
+    echo "4. Connect Power BI to gold.nyc311 schema for reporting"
     echo ""
     echo "Happy analyzing! 🎉"
 }
@@ -209,9 +181,9 @@ show_help() {
     echo "  $0 dev          # Deploy to dev environment"
     echo "  $0 prod         # Deploy to prod environment"
     echo ""
-    echo "Required environment variables:"
-    echo "  DATABRICKS_HOST    Databricks workspace URL"
-    echo "  DATABRICKS_TOKEN   Databricks access token"
+    echo "Authentication:"
+    echo "  Requires Databricks CLI with profile-based authentication"
+    echo "  Run 'databricks auth login' if not already authenticated"
 }
 
 # Parse command line arguments

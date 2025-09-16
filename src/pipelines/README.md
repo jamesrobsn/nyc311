@@ -1,8 +1,20 @@
-# Future Pipeline: NYC Taxi Data
+# NYC 311 Data Pipeline
 
-This folder structure demonstrates how to add additional data pipelines to the same repository.
+This directory contains the production NYC 311 data pipeline implementation and examples for future pipeline development.
 
-## Suggested Future Pipelines
+## Current Implementation
+
+### NYC 311 Service Requests Pipeline
+- **Status**: ✅ Production Ready
+- **Source**: NYC 311 Socrata API
+- **Structure**: Bronze → Silver → Gold (Python notebooks)
+- **Files**:
+  - `nyc311/nyc311_bronze_ingest.py` - Raw data ingestion from NYC 311 API
+  - `nyc311/nyc311_silver_transform.py` - Data cleaning and standardization
+  - `nyc311/nyc311_gold_star_schema.py` - Star schema for analytics
+- **Integration**: Connected to Power BI dashboard
+
+## Future Pipeline Examples
 
 ### 1. NYC Taxi Trip Data
 - **Source**: NYC TLC Trip Record Data
