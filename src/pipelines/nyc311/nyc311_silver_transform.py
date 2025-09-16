@@ -133,6 +133,43 @@ silver_df = silver_df \
         F.coalesce(F.col("longitude_num"), F.col("location_parsed.longitude"))
     )
 
+# Add geographic enrichment based on coordinates
+silver_df = silver_df \
+    .withColumn("has_coordinates", 
+                F.col("latitude_final").isNotNull() & F.col("longitude_final").isNotNull()) \
+    .withColumn("coordinates_quality",
+                F.when((F.col("latitude_final").between(40.4, 41.0)) & 
+                       (F.col("longitude_final").between(-74.3, -73.7)), "Valid NYC")
+                 .when(F.col("has_coordinates"), "Invalid NYC")
+                 .otherwise("Missing")) \
+    .withColumn("location_precision",
+                F.when(F.col("latitude_num").isNotNull() & F.col("longitude_num").isNotNull(), "High")
+                 .when(F.col("location_parsed.latitude").isNotNull(), "Medium") 
+                 .otherwise("Low"))
+
+# Create location grid for spatial analysis (0.01 degree grid ~ 1km in NYC)
+silver_df = silver_df \
+    .withColumn("lat_grid", F.when(F.col("latitude_final").isNotNull(), 
+                                   F.round(F.col("latitude_final") / 0.01) * 0.01)) \
+    .withColumn("lng_grid", F.when(F.col("longitude_final").isNotNull(), 
+                                   F.round(F.col("longitude_final") / 0.01) * 0.01)) \
+    .withColumn("grid_cell", F.when(F.col("lat_grid").isNotNull() & F.col("lng_grid").isNotNull(),
+                                    F.concat(F.col("lat_grid").cast("string"), F.lit("_"), F.col("lng_grid").cast("string"))))
+
+# Add neighborhood approximation based on coordinates (simplified NYC zones)
+silver_df = silver_df.withColumn("neighborhood_zone",
+    F.when((F.col("latitude_final") > 40.75) & (F.col("longitude_final") > -73.98), "Upper Manhattan")
+     .when((F.col("latitude_final") > 40.71) & (F.col("longitude_final") > -74.02), "Midtown Manhattan")
+     .when((F.col("latitude_final") > 40.68) & (F.col("longitude_final") > -74.02), "Lower Manhattan")
+     .when((F.col("latitude_final") > 40.65) & (F.col("longitude_final") < -73.98), "Brooklyn North")
+     .when((F.col("latitude_final") > 40.58) & (F.col("longitude_final") < -73.95), "Brooklyn South")
+     .when((F.col("latitude_final") > 40.72) & (F.col("longitude_final") < -73.85), "Queens North")
+     .when((F.col("latitude_final") > 40.65) & (F.col("longitude_final") < -73.80), "Queens South")
+     .when((F.col("latitude_final") > 40.82), "Bronx North")
+     .when((F.col("latitude_final") > 40.78), "Bronx South")
+     .when((F.col("latitude_final") < 40.65) & (F.col("longitude_final") < -74.10), "Staten Island")
+     .otherwise("Unknown Zone"))
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -267,7 +304,7 @@ silver_final = silver_df.select(
     F.col("status_clean").alias("status"),
     F.col("complaint_priority"),
     
-    # Location data
+    # Location data (enhanced)
     F.col("borough_standardized").alias("borough"),
     F.col("incident_zip_clean").alias("incident_zip"),
     F.col("incident_address"),
@@ -278,6 +315,13 @@ silver_final = silver_df.select(
     F.col("longitude_final").alias("longitude"),
     F.col("x_coordinate_num").alias("x_coordinate_state_plane"),
     F.col("y_coordinate_num").alias("y_coordinate_state_plane"),
+    F.col("has_coordinates"),
+    F.col("coordinates_quality"),
+    F.col("location_precision"),
+    F.col("grid_cell"),
+    F.col("lat_grid"),
+    F.col("lng_grid"),
+    F.col("neighborhood_zone"),
     
     # Other important fields
     F.col("location_type"),

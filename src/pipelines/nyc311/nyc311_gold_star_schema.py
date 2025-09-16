@@ -160,7 +160,7 @@ print(f"Agency dimension created with {agency_dim.count()} records")
 
 # COMMAND ----------
 
-# Create location dimension (simplified for Free Edition)
+# Create simplified location dimension for Free Edition (borough-based only)
 location_dim = silver_df.select(
     "borough"
 ).distinct() \
@@ -174,16 +174,30 @@ location_dim = silver_df.select(
      .when(F.col("borough") == "Staten Island", "Staten Island")
      .otherwise("Unknown")
 ) \
-.select("location_key", "borough", "region")  # Simplified - only essential columns
+.withColumn(
+    "zone_type",
+    F.when(F.col("borough") == "Manhattan", "Mixed")
+     .when(F.col("borough") == "Brooklyn", "Residential")
+     .when(F.col("borough") == "Queens", "Residential") 
+     .when(F.col("borough") == "Bronx", "Residential")
+     .when(F.col("borough") == "Staten Island", "Residential")
+     .otherwise("Mixed")
+) \
+.select(
+    "location_key", 
+    "borough", 
+    "region",
+    "zone_type"
+)
 
-# Write location dimension
+# Write simplified location dimension
 location_dim.write \
     .format("delta") \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.dim_location")
 
-print(f"Location dimension created with {location_dim.count()} records")
+print(f"Simplified location dimension created with {location_dim.count()} records (borough-level only for Free Edition)")
 
 # COMMAND ----------
 
@@ -244,7 +258,7 @@ print(f"Complaint type dimension created with {complaint_dim.count()} records")
 
 # COMMAND ----------
 
-# Step 1: Prepare base silver data with date_key
+# Step 1: Prepare base silver data with date_key and geographic details
 print("Step 1: Preparing base silver data...")
 silver_base = (
     silver_df
@@ -254,6 +268,10 @@ silver_base = (
         "unique_key", "created_date", "closed_date", "due_date", "response_time_hours",
         "response_time_category", "is_weekend", "status", "open_data_channel_type",
         "resolution_description", "silver_processed_ts", "agency", "complaint_type", "descriptor", "complaint_priority", "borough",
+        # Include geographic fields directly in fact table
+        "latitude", "longitude", "x_coordinate_state_plane", "y_coordinate_state_plane",
+        "grid_cell", "lat_grid", "lng_grid", "neighborhood_zone", "coordinates_quality", 
+        "location_precision", "has_coordinates", "incident_zip",
         "created_date_only", "date_key"
     )
     .coalesce(1)  # Single partition to minimize shuffles
@@ -413,6 +431,19 @@ fact_service_requests = fact_df.select(
     F.col("closed_date"),
     F.col("due_date"),
     
+    # Geographic coordinates (for map visualizations)
+    F.col("latitude"),
+    F.col("longitude"),
+    F.col("x_coordinate_state_plane"),
+    F.col("y_coordinate_state_plane"),
+    F.col("grid_cell"),
+    F.col("lat_grid"),
+    F.col("lng_grid"),
+    F.col("neighborhood_zone"),
+    F.col("coordinates_quality"),
+    F.col("location_precision"),
+    F.col("has_coordinates"),
+    
     # Measures and metrics
     F.col("response_time_hours"),
     F.col("response_time_category"),
@@ -423,6 +454,7 @@ fact_service_requests = fact_df.select(
     F.when(F.col("closed_date").isNotNull(), 1).otherwise(0).alias("is_resolved"),
     F.when(F.col("response_time_hours") <= 24, 1).otherwise(0).alias("resolved_same_day"),
     F.when(F.col("response_time_hours") <= 168, 1).otherwise(0).alias("resolved_within_week"),
+    F.when(F.col("coordinates_quality") == "Valid NYC", 1).otherwise(0).alias("has_valid_coordinates"),
     
     # Additional attributes
     F.col("status"),
@@ -506,13 +538,17 @@ daily_summary = fact_table_df.join(
     F.sum(F.col("is_closed").cast("int")).alias("closed_requests"),
     F.avg("response_time_hours").alias("avg_response_time_hours"),
     F.sum(F.col("resolved_same_day").cast("int")).alias("same_day_resolutions"),
-    F.sum(F.col("is_weekend").cast("int")).alias("weekend_requests")
+    F.sum(F.col("is_weekend").cast("int")).alias("weekend_requests"),
+    F.sum(F.col("has_valid_coordinates").cast("int")).alias("requests_with_coordinates")
 ).withColumn(
     "closure_rate",
     (F.col("closed_requests") / F.col("total_requests")) * 100
 ).withColumn(
     "same_day_rate", 
     (F.col("same_day_resolutions") / F.col("total_requests")) * 100
+).withColumn(
+    "coordinate_coverage",
+    (F.col("requests_with_coordinates") / F.col("total_requests")) * 100
 )
 
 daily_summary.coalesce(2).write \
@@ -522,6 +558,91 @@ daily_summary.coalesce(2).write \
     .saveAsTable(f"{gold_catalog}.{schema_name}.agg_daily_summary")
 
 print("✓ Daily summary created")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Geographic Summary by Borough and Neighborhood
+
+# COMMAND ----------
+
+# Geographic summary for spatial analysis (simplified for Free Edition - no joins needed)
+print("Creating geographic summary aggregate...")
+geographic_summary = fact_table_df.groupBy(
+    "neighborhood_zone"
+).agg(
+    F.count("*").alias("total_requests"),
+    F.sum(F.col("is_closed").cast("int")).alias("closed_requests"),
+    F.avg("response_time_hours").alias("avg_response_time_hours"),
+    F.sum(F.col("resolved_same_day").cast("int")).alias("same_day_resolutions"),
+    F.sum(F.col("has_valid_coordinates").cast("int")).alias("requests_with_coordinates"),
+    F.avg("latitude").alias("avg_latitude"),
+    F.avg("longitude").alias("avg_longitude"),
+    F.countDistinct("grid_cell").alias("unique_grid_cells"),
+    F.count(F.when(F.col("coordinates_quality") == "Valid NYC", 1)).alias("valid_coordinates_count"),
+    F.first("neighborhood_zone").alias("zone_name")  # For display purposes
+).withColumn(
+    "closure_rate",
+    (F.col("closed_requests") / F.col("total_requests")) * 100
+).withColumn(
+    "same_day_rate", 
+    (F.col("same_day_resolutions") / F.col("total_requests")) * 100
+).withColumn(
+    "coordinate_coverage",
+    (F.col("requests_with_coordinates") / F.col("total_requests")) * 100
+).withColumn(
+    "requests_per_grid_cell",
+    F.when(F.col("unique_grid_cells") > 0, F.col("total_requests") / F.col("unique_grid_cells")).otherwise(0)
+).filter(F.col("neighborhood_zone").isNotNull())
+
+geographic_summary.coalesce(1).write \
+    .format("delta") \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{gold_catalog}.{schema_name}.agg_geographic_summary")
+
+print("✓ Geographic summary created")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Grid Cell Heatmap Data
+
+# COMMAND ----------
+
+# Grid cell summary for heatmap visualizations
+print("Creating grid cell heatmap data...")
+grid_summary = fact_table_df.filter(
+    (F.col("has_valid_coordinates") == 1) & F.col("grid_cell").isNotNull()
+).groupBy(
+    "grid_cell",
+    "lat_grid",
+    "lng_grid",
+    "neighborhood_zone"
+).agg(
+    F.count("*").alias("total_requests"),
+    F.sum(F.col("is_closed").cast("int")).alias("closed_requests"),
+    F.avg("response_time_hours").alias("avg_response_time_hours"),
+    F.countDistinct("complaint_key").alias("unique_complaint_types"),
+    F.countDistinct("agency_key").alias("unique_agencies")
+).withColumn(
+    "closure_rate",
+    (F.col("closed_requests") / F.col("total_requests")) * 100
+).withColumn(
+    "request_density_category",
+    F.when(F.col("total_requests") >= 100, "High")
+     .when(F.col("total_requests") >= 50, "Medium") 
+     .when(F.col("total_requests") >= 10, "Low")
+     .otherwise("Very Low")
+)
+
+grid_summary.coalesce(1).write \
+    .format("delta") \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{gold_catalog}.{schema_name}.agg_grid_heatmap")
+
+print("✓ Grid cell heatmap data created")
 
 # COMMAND ----------
 
@@ -636,6 +757,8 @@ if environment == "prod":
         f"{gold_catalog}.{schema_name}.dim_complaint_type",
         f"{gold_catalog}.{schema_name}.fact_service_requests",
         f"{gold_catalog}.{schema_name}.agg_daily_summary",
+        f"{gold_catalog}.{schema_name}.agg_geographic_summary",
+        f"{gold_catalog}.{schema_name}.agg_grid_heatmap",
         # Monthly agency summary skipped for Free Edition
         f"{gold_catalog}.{schema_name}.agg_complaint_performance",
         f"{gold_catalog}.{schema_name}.agg_borough_comparison"
@@ -647,7 +770,9 @@ if environment == "prod":
 
     # Z-order key tables for better performance
     spark.sql(f"OPTIMIZE {gold_catalog}.{schema_name}.fact_service_requests ZORDER BY (date_key, agency_key, location_key)")
-    spark.sql(f"OPTIMIZE {gold_catalog}.{schema_name}.agg_daily_summary ZORDER BY (report_date, borough, agency)")
+    spark.sql(f"OPTIMIZE {gold_catalog}.{schema_name}.agg_daily_summary ZORDER BY (report_date)")
+    spark.sql(f"OPTIMIZE {gold_catalog}.{schema_name}.agg_geographic_summary ZORDER BY (neighborhood_zone)")
+    spark.sql(f"OPTIMIZE {gold_catalog}.{schema_name}.agg_grid_heatmap ZORDER BY (lat_grid, lng_grid)")
 
     print("All tables optimized")
 else:
@@ -682,6 +807,8 @@ tables = [
     ("NYC 311 Complaint Type Dimension", f"{gold_catalog}.{schema_name}.dim_complaint_type"),
     ("NYC 311 Fact Service Requests", f"{gold_catalog}.{schema_name}.fact_service_requests"),
     ("NYC 311 Daily Summary", f"{gold_catalog}.{schema_name}.agg_daily_summary"),
+    ("NYC 311 Geographic Summary", f"{gold_catalog}.{schema_name}.agg_geographic_summary"),
+    ("NYC 311 Grid Heatmap Data", f"{gold_catalog}.{schema_name}.agg_grid_heatmap"),
     # Monthly agency summary skipped for Free Edition
     ("NYC 311 Complaint Performance", f"{gold_catalog}.{schema_name}.agg_complaint_performance"),
     ("NYC 311 Borough Comparison", f"{gold_catalog}.{schema_name}.agg_borough_comparison")
