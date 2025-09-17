@@ -15,7 +15,7 @@
 dbutils.widgets.text("bronze_catalog", "bronze", "Bronze Catalog Name")
 dbutils.widgets.text("schema_name", "nyc311", "Schema Name")
 dbutils.widgets.text("environment", "dev", "Environment")
-dbutils.widgets.text("batch_size", "50000", "Batch Size for API requests")
+dbutils.widgets.text("batch_size", "500000", "Batch Size for API requests")
 
 bronze_catalog = dbutils.widgets.get("bronze_catalog")
 schema_name = dbutils.widgets.get("schema_name")
