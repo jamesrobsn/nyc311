@@ -147,6 +147,14 @@ databricks bundle deploy --target dev
 databricks bundle run nyc311_pipeline --target dev
 ```
 
+### Additional examples
+
+For more Databricks Asset Bundle examples and reference patterns, see the Databricks bundle-examples knowledge base:
+
+[Databricks bundle-examples — knowledge_base](https://github.com/databricks/bundle-examples/blob/main/knowledge_base)
+
+This contains example bundles and patterns you can reference when customizing or extending this project.
+
 ## Configuration
 
 ### Serverless Compute Optimizations
