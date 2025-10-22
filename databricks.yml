@@ -3,7 +3,8 @@ bundle:
 
 # Variables with SQL warehouse lookup
 # Note: notification_email is provided via BUNDLE_VAR_notification_email environment variable
-# The deploy.sh script automatically converts NOTIFICATION_EMAIL from .env to BUNDLE_VAR_notification_email
+# Note: workspace_host is set directly from DATABRICKS_HOST environment variable
+# The deploy.sh script automatically loads .env file
 variables:
   bronze_catalog:
     description: "Bronze catalog name for raw data"
@@ -38,6 +39,8 @@ targets:
   dev:
     mode: development
     default: true
+    workspace:
+      host: https://dbc-70fb432f-763c.cloud.databricks.com
     resources:
       jobs:
         nyc311_pipeline:
@@ -116,10 +119,12 @@ targets:
 
   prod:
     mode: production
+    workspace:
+      host: https://dbc-70fb432f-763c.cloud.databricks.com
     resources:
       jobs:
         nyc311_pipeline:
-          name: "[PROD] NYC 311 Data Pipeline"
+          name: "NYC 311 Data Pipeline"
           email_notifications:
             on_failure:
               - ${var.notification_email}

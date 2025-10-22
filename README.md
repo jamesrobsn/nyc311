@@ -59,13 +59,19 @@ databricks auth login
 databricks auth profiles  # Verify
 ```
 
-**3. Deploy:**
+**3. Validate:**
+```bash
+export BUNDLE_VAR_notification_email=your-email@example.com
+databricks bundle validate --var notification_email=${BUNDLE_VAR_notification_email}
+```
+
+**4. Deploy:**
 ```bash
 ./deploy.sh dev   # Development environment
 ./deploy.sh prod  # Production environment
 ```
 
-**4. Monitor:**
+**5. Monitor:**
 Navigate to **Workflows** in Databricks UI to view "NYC 311 Data Pipeline" and monitor execution.
 
 ### Optional: Local Python Environment
@@ -74,7 +80,7 @@ For local development, choose either conda or venv:
 
 **Using Conda:**
 ```bash
-conda create -n nyc311 python=3.9
+conda create -n nyc311 python=3.11
 conda activate nyc311
 pip install -r requirements.txt
 ```
@@ -133,8 +139,8 @@ nyc311/
 **Catalogs:** `bronze.nyc311` (raw) → `silver.nyc311` (clean) → `gold.nyc311` (analytics)
 
 **Environments:**
-- **Dev**: 50K batch size, manual runs, 1-hour timeout
-- **Prod**: 100K batch size, daily at 11 PM UTC, 2-hour timeout
+- **Dev**: 500K batch size, manual runs, 1-hour timeout
+- **Prod**: 5M batch size, daily at 11 PM UTC, 2-hour timeout
 
 **Customization:** Edit notebook parameters in `databricks.yml` or modify notebooks directly:
 - `nyc311_bronze_ingest.py` - API settings, batch sizes, retry logic

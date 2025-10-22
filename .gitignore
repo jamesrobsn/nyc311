@@ -162,3 +162,6 @@ data/
 tmp/
 temp/
 *.tmp
+
+# Other
+typings/
