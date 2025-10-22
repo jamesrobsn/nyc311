@@ -8,12 +8,26 @@ set -e
 load_env_file() {
     if [[ -f ".env" ]]; then
         echo "Loading environment variables from .env file..."
-        export $(grep -v '^#' .env | grep -v '^$' | xargs)
+        set -a
+        source .env 2>/dev/null || true
+        set +a
     fi
 }
 
 # Load .env file first
 load_env_file
+
+# Convert .env variables to BUNDLE_VAR_ format for Databricks
+setup_bundle_vars() {
+    # Convert NOTIFICATION_EMAIL to BUNDLE_VAR_notification_email if set
+    if [[ -n "${NOTIFICATION_EMAIL:-}" ]]; then
+        export BUNDLE_VAR_notification_email="${NOTIFICATION_EMAIL}"
+        print_status "Set BUNDLE_VAR_notification_email from .env file" 2>/dev/null || true
+    fi
+}
+
+# Setup bundle variables
+setup_bundle_vars
 
 # Colors for output
 RED='\033[0;31m'
@@ -38,11 +52,32 @@ print_error() {
 check_env_vars() {
     print_status "Checking for optional environment variables..."
     
+    # Check for bundle variables
+    if [[ -n "${BUNDLE_VAR_notification_email:-}" ]]; then
+        print_status "Email notifications enabled: ${BUNDLE_VAR_notification_email}"
+    else
+        print_warning "No notification email set - email notifications will be skipped"
+        print_warning "To enable: add NOTIFICATION_EMAIL to .env file"
+    fi
+    
     # Environment variables are now optional since we use profiles
     if [[ -n "${DATABRICKS_HOST:-}" && -n "${DATABRICKS_TOKEN:-}" ]]; then
-        print_status "Environment variables are set (will be used alongside profiles)"
+        print_status "Databricks connection variables are set (will be used alongside profiles)"
     else
-        print_status "No environment variables set - using profile-based authentication"
+        print_status "Using profile-based authentication (recommended)"
+    fi
+}
+
+# Check CLI version meets minimum requirement
+check_cli_version() {
+    local version=$(databricks --version 2>&1 | grep -oP 'Databricks CLI v\K[0-9.]+' || echo "0.0.0")
+    local min_version="0.205.0"
+    
+    if [[ "$(printf '%s\n' "$min_version" "$version" | sort -V | head -n1)" != "$min_version" ]]; then
+        print_warning "Databricks CLI version $version detected. Recommended: $min_version+"
+        print_warning "Some features may not work correctly with older versions"
+    else
+        print_status "Databricks CLI version $version (meets minimum requirement)"
     fi
 }
 
@@ -60,6 +95,9 @@ check_databricks_cli() {
         echo "databricks auth login"
         exit 1
     fi
+    
+    # Check CLI version
+    check_cli_version
     
     # Check if bundle command is available (new CLI)
     if ! databricks bundle --help &> /dev/null; then
@@ -82,7 +120,17 @@ check_databricks_cli() {
         exit 1
     fi
     
-    print_status "Databricks CLI (new version) is installed and authenticated"
+    # Verify workspace access
+    print_status "Verifying workspace access..."
+    if ! databricks workspace list / &> /dev/null; then
+        print_error "Cannot access workspace. Authentication may have expired."
+        echo ""
+        echo "Please re-authenticate:"
+        echo "databricks auth login"
+        exit 1
+    fi
+    
+    print_status "Databricks CLI is installed and authenticated successfully"
 }
 
 # Validate bundle configuration
@@ -102,6 +150,20 @@ validate_bundle() {
 deploy_bundle() {
     local environment=${1:-dev}
     
+    # Production safety check
+    if [[ "$environment" == "prod" ]]; then
+        print_warning "WARNING: You are about to deploy to PRODUCTION"
+        print_warning "This will update production pipelines and may affect live data"
+        echo ""
+        print_warning "Continue with production deployment? (yes/no)"
+        read -r -t 30 response || response="no"
+        
+        if [[ ! "$response" =~ ^[Yy][Ee][Ss]$ ]]; then
+            print_status "Production deployment cancelled"
+            exit 0
+        fi
+    fi
+    
     print_status "Deploying to $environment environment..."
     
     # Deploy the bundle
@@ -114,8 +176,15 @@ deploy_bundle() {
 run_pipeline() {
     local environment=${1:-dev}
     
+    # Check if running in non-interactive mode (CI/CD)
+    if [[ ! -t 0 ]]; then
+        print_status "Non-interactive mode detected. Skipping pipeline execution."
+        print_status "Run manually with: databricks bundle run nyc311_pipeline --target $environment"
+        return 0
+    fi
+    
     print_warning "Do you want to run the NYC 311 pipeline now? (y/n)"
-    read -r response
+    read -r -t 30 response || response="n"
     
     if [[ "$response" =~ ^[Yy]$ ]]; then
         print_status "Running NYC 311 Data Pipeline (all three tasks will execute sequentially)..."
@@ -164,7 +233,7 @@ main() {
     echo "3. Access the gold layer tables for analytics and Power BI"
     echo "4. Connect Power BI to gold.nyc311 schema for reporting"
     echo ""
-    echo "Happy analyzing! 🎉"
+    echo "Happy analyzing!"
 }
 
 # Help function

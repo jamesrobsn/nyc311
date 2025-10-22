@@ -1,89 +1,104 @@
 #!/usr/bin/env python3
 """
-Test script for NYC 311 API connectivity
-This is a standalone script to test the API fetch functionality without Databricks dependencies
+Test NYC 311 API connectivity.
+
+Standalone test script without Databricks dependencies.
+Tests API fetch functionality with retry logic and error handling.
 """
 
-import time
-import requests
 import json
+import time
 from datetime import datetime
+
+import requests
 
 # NYC 311 API configuration
 NYC_311_BASE_URL = "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
-APP_TOKEN = None  # No token for testing
+APP_TOKEN = None  # No token - graceful degradation for testing
+
 
 def test_fetch_nyc311_data(limit=10, retry_count=3, backoff_factor=1.5):
     """
-    Test fetching NYC 311 data from the Socrata API.
-    Uses robust error handling and retries.
+    Fetch NYC 311 data from Socrata API with retry logic.
+    
+    Args:
+        limit: Number of records to fetch
+        retry_count: Maximum retry attempts
+        backoff_factor: Exponential backoff multiplier
+        
+    Returns:
+        List of records or None on failure
     """
     params = {"$limit": limit, "$order": "created_date DESC"}
     headers = {"X-App-Token": APP_TOKEN} if APP_TOKEN else {}
     
-    print(f"Testing API connection to: {NYC_311_BASE_URL}")
-    print(f"Request params: {params}")
-    print(f"Request headers: {headers}")
+    print(f"Testing API connection: {NYC_311_BASE_URL}")
+    print(f"Params: {params}")
     
-    # Implement retry logic
     for attempt in range(retry_count):
         try:
             print(f"\nAttempt {attempt + 1}/{retry_count}")
-            
             start_time = datetime.now()
-            print(f"Start time: {start_time}")
             
-            response = requests.get(NYC_311_BASE_URL, params=params, headers=headers, timeout=60)
+            response = requests.get(
+                NYC_311_BASE_URL,
+                params=params,
+                headers=headers,
+                timeout=60
+            )
             
-            end_time = datetime.now()
-            print(f"End time: {end_time}")
-            print(f"Duration: {(end_time - start_time).total_seconds():.2f} seconds")
+            duration = (datetime.now() - start_time).total_seconds()
+            print(f"Duration: {duration:.2f}s | Status: {response.status_code}")
             
-            print(f"Response status: {response.status_code}")
-            print(f"Response content type: {response.headers.get('Content-Type')}")
-            print(f"Response content length: {len(response.content)} bytes")
-            
-            # Check if we got a valid response
             response.raise_for_status()
-            
-            # Try to parse as JSON
             data = response.json()
             
-            # Check the data structure
-            if isinstance(data, list):
-                print(f"✓ Successfully retrieved {len(data)} records as list")
-                if data:
-                    print("\nFirst record sample:")
-                    print(json.dumps(data[0], indent=2))
+            if not isinstance(data, list):
+                print(f"Unexpected data type: {type(data)}")
                 return data
+            
+            print(f"Retrieved {len(data)} records")
+            if data:
+                print("\nSample record:")
+                print(json.dumps(data[0], indent=2))
+            return data
+                
+        except requests.exceptions.HTTPError as e:
+            print(f"HTTP error: {e}")
+            if response.status_code == 429:  # Rate limit
+                retry_after = int(response.headers.get("Retry-After", backoff_factor ** attempt))
+                print(f"Rate limited. Retrying in {retry_after}s...")
+                time.sleep(retry_after)
+            elif attempt == retry_count - 1:
+                print(f"Failed after {retry_count} attempts")
+                return None
             else:
-                print(f"⚠️ Got data but not as expected list format. Type: {type(data)}")
-                print("Data sample:")
-                print(json.dumps(data)[:500] + "..." if len(json.dumps(data)) > 500 else json.dumps(data))
-                return data
+                sleep_time = backoff_factor ** attempt
+                print(f"Retrying in {sleep_time:.1f}s...")
+                time.sleep(sleep_time)
                 
         except requests.exceptions.RequestException as e:
-            print(f"⚠️ Request error on attempt {attempt + 1}: {e}")
+            print(f"Request error: {e}")
             if attempt == retry_count - 1:
-                print(f"✖ Failed after {retry_count} attempts")
+                print(f"Failed after {retry_count} attempts")
                 return None
-                
             sleep_time = backoff_factor ** attempt
-            print(f"Retrying in {sleep_time:.1f} seconds...")
+            print(f"Retrying in {sleep_time:.1f}s...")
             time.sleep(sleep_time)
-        except ValueError as e:
-            print(f"⚠️ JSON parsing error: {e}")
-            print(f"Raw response content (first 500 chars):")
-            print(response.text[:500] + "..." if len(response.text) > 500 else response.text)
+            
+        except (ValueError, json.JSONDecodeError) as e:
+            print(f"JSON parsing error: {e}")
+            print(f"Response preview: {response.text[:500]}")
             return None
+    
+    return None
 
 if __name__ == "__main__":
-    print("=== NYC 311 API Connectivity Test ===")
+    print("=== NYC 311 API Connectivity Test ===\n")
     
-    # Test with a small limit
     records = test_fetch_nyc311_data(limit=10)
     
     if records:
-        print(f"\n✓ TEST PASSED: Successfully fetched {len(records)} records")
+        print(f"\nTEST PASSED: {len(records)} records fetched successfully")
     else:
-        print("\n✖ TEST FAILED: Could not fetch records from NYC 311 API")
+        print("\nTEST FAILED: Could not fetch records")

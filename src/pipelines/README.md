@@ -5,7 +5,7 @@ This directory contains the production NYC 311 data pipeline implementation and 
 ## Current Implementation
 
 ### NYC 311 Service Requests Pipeline
-- **Status**: ✅ Production Ready
+- **Status**: Production Ready
 - **Source**: NYC 311 Socrata API
 - **Structure**: Bronze → Silver → Gold (Python notebooks)
 - **Files**:
