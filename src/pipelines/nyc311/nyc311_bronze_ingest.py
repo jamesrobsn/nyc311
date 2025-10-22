@@ -277,25 +277,50 @@ if dfs:
         .withColumn("location", F.col("location").cast("string"))
     )
     
-    print(f"Writing to {full_table_name}...")
-    bronze.write.format("delta").mode("append").saveAsTable(full_table_name)
-    print(f"✓ Written to table")
+    print(f"Writing to {full_table_name} (MERGE on unique_key)...")
+    
+    # Get pre-merge count
+    count_before = spark.sql(f"SELECT COUNT(*) as count FROM {full_table_name}").first()['count']
+    
+    # Use Delta merge to handle duplicates (upsert pattern)
+    bronze.createOrReplaceTempView("bronze_staging")
+    
+    merge_result = spark.sql(f"""
+    MERGE INTO {full_table_name} AS target
+    USING bronze_staging AS source
+    ON target.unique_key = source.unique_key
+    WHEN MATCHED THEN UPDATE SET *
+    WHEN NOT MATCHED THEN INSERT *
+    """)
+    
+    # Get post-merge count
+    count_after = spark.sql(f"SELECT COUNT(*) as count FROM {full_table_name}").first()['count']
+    records_inserted = count_after - count_before
+    records_updated = ingested - records_inserted
+    
+    if records_inserted == 0 and records_updated > 0:
+        print(f"Merged: {records_updated:,} existing records refreshed (no new service requests)")
+    elif records_inserted > 0 and records_updated == 0:
+        print(f"Merged: {records_inserted:,} new records inserted")
+    elif records_inserted > 0 and records_updated > 0:
+        print(f"Merged: {records_inserted:,} new records, {records_updated:,} existing records refreshed")
+    else:
+        print(f"Merged: No changes (0 records)")
     
     max_updated = bronze.agg(F.max("_updated_at")).first()[0]
     if max_updated:
         spark.sql(f"DELETE FROM {state_table}")
         spark.createDataFrame([(max_updated,)], ["updated_at_watermark"]) \
              .write.mode("append").saveAsTable(state_table)
-        print(f"✓ Watermark: {max_updated}")
+        print(f"Watermark updated: {max_updated}")
     
     try:
         display(spark.sql(f"SELECT * FROM {full_table_name} ORDER BY _updated_at DESC LIMIT 5"))
     except NameError:
         spark.sql(f"SELECT * FROM {full_table_name} ORDER BY _updated_at DESC LIMIT 5").show(5)
     
-    record_count = spark.sql(f"SELECT COUNT(*) as count FROM {full_table_name}").first()['count']
-    print(f"✓ Total records in table: {record_count}")
-    print(f"✓ Ingested this run: {ingested}")
+    print(f"Total records in table: {count_after:,}")
+    print(f"Batch summary: {ingested:,} records fetched from API ({records_inserted:,} new, {records_updated:,} existing)")
 else:
     print("No data to process")
 

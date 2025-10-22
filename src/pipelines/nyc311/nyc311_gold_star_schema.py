@@ -94,7 +94,7 @@ date_dim = silver_df.select("created_date").distinct() \
 
 date_dim.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.dim_date")
-print(f"✓ Date dimension: {date_dim.count()} records")
+print(f"Date dimension: {date_dim.count()} records")
 
 # COMMAND ----------
 
@@ -119,7 +119,7 @@ agency_dim = silver_df.select("agency", "agency_name").distinct() \
 
 agency_dim.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.dim_agency")
-print(f"✓ Agency dimension: {agency_dim.count()} records")
+print(f"Agency dimension: {agency_dim.count()} records")
 
 # COMMAND ----------
 
@@ -152,7 +152,7 @@ location_dim = silver_df.select("borough").distinct() \
 
 location_dim.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.dim_location")
-print(f"✓ Location dimension: {location_dim.count()} records")
+print(f"Location dimension: {location_dim.count()} records")
 
 # COMMAND ----------
 
@@ -187,7 +187,7 @@ complaint_dim = silver_df.select("complaint_type", "descriptor", "complaint_prio
 
 complaint_dim.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.dim_complaint_type")
-print(f"✓ Complaint dimension: {complaint_dim.count()} records")
+print(f"Complaint dimension: {complaint_dim.count()} records")
 
 # COMMAND ----------
 
@@ -220,7 +220,7 @@ silver_base = (
 
 silver_base.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.temp_silver_base")
-print("✓ Step 1 complete")
+print("Step 1 complete")
 
 # COMMAND ----------
 
@@ -242,7 +242,7 @@ silver_with_agency = (
 
 silver_with_agency.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.temp_silver_with_agency")
-print("✓ Step 2 complete")
+print("Step 2 complete")
 
 # COMMAND ----------
 
@@ -265,7 +265,7 @@ silver_with_location = (
 
 silver_with_location.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.temp_silver_with_location")
-print("✓ Step 3 complete")
+print("Step 3 complete")
 
 # COMMAND ----------
 
@@ -288,7 +288,7 @@ fact_df = (
           "left")
     .select(F.col("swl.*"), F.col("cd.complaint_key"))
 )
-print("✓ Step 4 complete")
+print("Step 4 complete")
 
 # COMMAND ----------
 
@@ -339,7 +339,7 @@ fact_service_requests.write.format("delta").mode("overwrite") \
     .option("delta.autoOptimize.optimizeWrite", "false") \
     .option("delta.autoOptimize.autoCompact", "false") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.fact_service_requests")
-print("✓ Step 5 complete")
+print("Step 5 complete")
 
 # COMMAND ----------
 
@@ -351,7 +351,7 @@ print("✓ Step 5 complete")
 spark.sql(f"DROP TABLE IF EXISTS {gold_catalog}.{schema_name}.temp_silver_base")
 spark.sql(f"DROP TABLE IF EXISTS {gold_catalog}.{schema_name}.temp_silver_with_agency")
 spark.sql(f"DROP TABLE IF EXISTS {gold_catalog}.{schema_name}.temp_silver_with_location")
-print("✓ Cleanup complete")
+print("Cleanup complete")
 
 # COMMAND ----------
 
@@ -407,7 +407,7 @@ daily_summary = fact_table_df.join(
 daily_summary.coalesce(2).write.format("delta").mode("overwrite") \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.agg_daily_summary")
-print("✓ Daily summary")
+print("Daily summary")
 
 # COMMAND ----------
 
@@ -445,7 +445,7 @@ geographic_summary = fact_table_df.groupBy(
 geographic_summary.coalesce(1).write.format("delta").mode("overwrite") \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.agg_geographic_summary")
-print("✓ Geographic summary")
+print("Geographic summary")
 
 # COMMAND ----------
 
@@ -480,7 +480,7 @@ grid_summary = fact_table_df.filter(
 grid_summary.coalesce(1).write.format("delta").mode("overwrite") \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.agg_grid_heatmap")
-print("✓ Grid heatmap")
+print("Grid heatmap")
 
 # COMMAND ----------
 
@@ -528,7 +528,7 @@ complaint_performance = fact_table_df.join(
 complaint_performance.coalesce(2).write.format("delta").mode("overwrite") \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.agg_complaint_performance")
-print("✓ Complaint performance")
+print("Complaint performance")
 
 # COMMAND ----------
 
@@ -561,7 +561,7 @@ borough_comparison = fact_table_df.join(
 borough_comparison.coalesce(1).write.format("delta").mode("overwrite") \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{gold_catalog}.{schema_name}.agg_borough_comparison")
-print("✓ Borough comparison")
+print("Borough comparison")
 
 # COMMAND ----------
 
@@ -589,7 +589,7 @@ if environment == "prod":
     
     spark.sql(f"OPTIMIZE {gold_catalog}.{schema_name}.fact_service_requests ZORDER BY (date_key, agency_key, location_key)")
     spark.sql(f"OPTIMIZE {gold_catalog}.{schema_name}.agg_daily_summary ZORDER BY (report_date)")
-    print("✓ Optimization complete")
+    print("Optimization complete")
 else:
     print("Skipping optimization in dev")
 

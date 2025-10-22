@@ -2,3 +2,4 @@
 
 # Core dependencies
 requests>=2.28.0
+databricks-connect>=13.3.8

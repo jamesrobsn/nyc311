@@ -318,7 +318,7 @@ silver_final.write.format("delta").mode("overwrite") \
     .option("mergeSchema", "true") \
     .saveAsTable(full_silver_table)
 
-print(f"✓ Written to {full_silver_table}")
+print(f"Written to {full_silver_table}")
 
 try:
     display(spark.table(full_silver_table).limit(5))
@@ -334,7 +334,7 @@ except NameError:
 
 spark.sql(f"OPTIMIZE {full_silver_table}")
 spark.sql(f"OPTIMIZE {full_silver_table} ZORDER BY (borough, complaint_type, created_year, created_month)")
-print("✓ Optimization complete")
+print("Optimization complete")
 
 # COMMAND ----------
 

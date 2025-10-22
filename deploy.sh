@@ -24,6 +24,9 @@ setup_bundle_vars() {
         export BUNDLE_VAR_notification_email="${NOTIFICATION_EMAIL}"
         print_status "Set BUNDLE_VAR_notification_email from .env file" 2>/dev/null || true
     fi
+    
+    # DATABRICKS_HOST is used directly (no conversion needed)
+    # Databricks CLI automatically picks it up from environment
 }
 
 # Setup bundle variables
@@ -52,6 +55,13 @@ print_error() {
 check_env_vars() {
     print_status "Checking for optional environment variables..."
     
+    # Check for workspace host (used by Databricks CLI)
+    if [[ -n "${DATABRICKS_HOST:-}" ]]; then
+        print_status "Workspace host configured: ${DATABRICKS_HOST}"
+    else
+        print_warning "DATABRICKS_HOST not set - will use profile configuration"
+    fi
+    
     # Check for bundle variables
     if [[ -n "${BUNDLE_VAR_notification_email:-}" ]]; then
         print_status "Email notifications enabled: ${BUNDLE_VAR_notification_email}"
@@ -61,8 +71,8 @@ check_env_vars() {
     fi
     
     # Environment variables are now optional since we use profiles
-    if [[ -n "${DATABRICKS_HOST:-}" && -n "${DATABRICKS_TOKEN:-}" ]]; then
-        print_status "Databricks connection variables are set (will be used alongside profiles)"
+    if [[ -n "${DATABRICKS_TOKEN:-}" ]]; then
+        print_status "Databricks token set (will be used alongside profiles)"
     else
         print_status "Using profile-based authentication (recommended)"
     fi
