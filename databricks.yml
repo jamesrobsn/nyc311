@@ -2,6 +2,8 @@ bundle:
   name: nyc311-pipeline
 
 # Variables with SQL warehouse lookup
+# Note: notification_email is provided via BUNDLE_VAR_notification_email environment variable
+# The deploy.sh script automatically converts NOTIFICATION_EMAIL from .env to BUNDLE_VAR_notification_email
 variables:
   bronze_catalog:
     description: "Bronze catalog name for raw data"
@@ -25,8 +27,8 @@ variables:
       warehouse: "Serverless Starter Warehouse"
   
   notification_email:
-    description: "Email address for notifications"
-    default: "${env.NOTIFICATION_EMAIL}"
+    description: "Email address for notifications (set via BUNDLE_VAR_notification_email or --var)"
+    # No default - must be provided via BUNDLE_VAR_notification_email env var or --var flag
 
 # Where the bundle syncs in the workspace
 workspace:
