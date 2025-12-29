@@ -216,12 +216,16 @@ run_pipeline() {
 main() {
     local environment=${1:-dev}
     
+    # Set profile to match target environment
+    export DATABRICKS_CONFIG_PROFILE="$environment"
+    
     echo "======================================"
     echo "NYC 311 Databricks Bundle Deployment"
     echo "======================================"
     echo ""
     
     print_status "Starting deployment to $environment environment"
+    print_status "Using Databricks profile: $DATABRICKS_CONFIG_PROFILE"
     
     # Pre-deployment checks
     check_env_vars
