@@ -35,6 +35,7 @@ print(f"Batch Size: {batch_size}")
 # COMMAND ----------
 
 import time
+import json
 import requests
 from datetime import datetime, timedelta, timezone
 from pyspark.sql import functions as F
@@ -228,6 +229,14 @@ while True:
         print("No more rows")
         break
     
+    # Normalize location field to JSON string for consistent schema
+    # NYC 311 API returns inconsistent types: sometimes string, sometimes dict/array
+    # Silver layer expects JSON string parseable with from_json()
+    for row in batch:
+        if 'location' in row and row['location'] is not None:
+            if not isinstance(row['location'], str):
+                row['location'] = json.dumps(row['location'])
+    
     df = spark.createDataFrame(batch) \
              .withColumn("ingest_ts", F.current_timestamp()) \
              .withColumn("run_date", F.to_date(F.current_timestamp())) \
@@ -274,7 +283,8 @@ if dfs:
         .withColumn("unique_key", F.col("unique_key").cast("bigint"))
         .withColumn("latitude", F.col("latitude").cast("double"))
         .withColumn("longitude", F.col("longitude").cast("double"))
-        .withColumn("location", F.col("location").cast("string"))
+        # Note: location field remains as JSON string from preprocessing above
+        # Do not convert - silver layer expects JSON string for from_json() parsing
     )
     
     print(f"Writing to {full_table_name} (MERGE on unique_key)...")
